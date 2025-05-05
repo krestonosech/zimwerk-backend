@@ -214,21 +214,53 @@ app.post('/excursions', async (req, res) => {
   });
 });
 
-function parseRussianDate(dateStr) {
+function parseDateRange(dateStr, year = (new Date()).getFullYear()) {
   const months = {
     'января': 0, 'февраля': 1, 'марта': 2, 'апреля': 3, 'мая': 4, 'июня': 5,
     'июля': 6, 'августа': 7, 'сентября': 8, 'октября': 9, 'ноября': 10, 'декабря': 11
   };
-  const [day, month] = dateStr.trim().split(' ');
-  const d = parseInt(day, 10);
-  const m = months[month];
-  const y = new Date().getFullYear();
-  return new Date(y, m, d);
+  dateStr = dateStr.trim();
+
+  // Диапазон в одном месяце: "1 – 12 июня"
+  let match = dateStr.match(/^(\d+)\s*[–-]\s*(\d+)\s+([а-яё]+)$/i);
+  if (match) {
+    const startDay = parseInt(match[1], 10);
+    const endDay = parseInt(match[2], 10);
+    const month = months[match[3].toLowerCase()];
+    return {
+      start: new Date(year, month, startDay),
+      end: new Date(year, month, endDay)
+    };
+  }
+
+  // Диапазон в двух месяцах: "16 апреля – 11 мая"
+  match = dateStr.match(/^(\d+)\s+([а-яё]+)\s*[–-]\s*(\d+)\s+([а-яё]+)$/i);
+  if (match) {
+    const startDay = parseInt(match[1], 10);
+    const startMonth = months[match[2].toLowerCase()];
+    const endDay = parseInt(match[3], 10);
+    const endMonth = months[match[4].toLowerCase()];
+    return {
+      start: new Date(year, startMonth, startDay),
+      end: new Date(year, endMonth, endDay)
+    };
+  }
+
+  // Обычная дата: "8 мая"
+  match = dateStr.match(/^(\d+)\s+([а-яё]+)$/i);
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const month = months[match[2].toLowerCase()];
+    const d = new Date(year, month, day);
+    return { start: d, end: d };
+  }
+
+  // Не распарсилось
+  return { start: null, end: null };
 }
 
 app.post('/events', async (req, res) => {
   const { type, search } = req.body;
-
   const { sql, params } = buildEventsQuery(type, search, 'events');
 
   db.all(sql, params, (err, rows) => {
@@ -236,35 +268,47 @@ app.post('/events', async (req, res) => {
       return res.status(500).json({ message: err.message });
     }
 
-    const sortedRows = rows.slice().sort((a, b) => {
-      const dateA = parseRussianDate(a.date);
-      const dateB = parseRussianDate(b.date);
-      return dateA - dateB;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const futureRows = rows.filter(event => {
+      const { start, end } = parseDateRange(event.date);
+      // Событие показываем, если оно еще не закончилось (end >= today)
+      return end && end >= today;
     });
 
-    res.status(200).json({ data: sortedRows });
+    futureRows.sort((a, b) => {
+      const { start: aStart } = parseDateRange(a.date);
+      const { start: bStart } = parseDateRange(b.date);
+      return aStart - bStart;
+    });
+
+    res.status(200).json({ data: futureRows });
   });
 });
 
 app.post('/events-archive', async (req, res) => {
   const { type, search } = req.body;
-
   const { sql, params } = buildEventsQuery(type, search, 'events');
 
   db.all(sql, params, (err, rows) => {
     if (err) {
       return res.status(500).json({ message: err.message });
     }
+
     const today = new Date();
     today.setHours(0,0,0,0);
 
     const archiveRows = rows.filter(event => {
-      try {
-        const eventDate = parseRussianDate(event.date);
-        return eventDate < today;
-      } catch {
-        return false;
-      }
+      const { end } = parseDateRange(event.date);
+      // В архиве только те, что закончились (end < today)
+      return end && end < today;
+    });
+
+    archiveRows.sort((a, b) => {
+      const { start: aStart } = parseDateRange(a.date);
+      const { start: bStart } = parseDateRange(b.date);
+      return bStart - aStart;
     });
 
     res.status(200).json({ data: archiveRows });
