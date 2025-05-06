@@ -4,7 +4,9 @@ const cors = require('cors')
 const express = require('express')
 const jsonwebtoken = require('jsonwebtoken')
 const sqlite3 = require('sqlite3')
+const multer = require('multer');
 
+const upload = multer();
 const app = express()
 const port = 3001
 
@@ -173,15 +175,6 @@ app.post('/me', async (req, res) => {
   })
 })
 
-app.post('/etnozoo', async (req, res) => {
-  db.all(`select * from etnozoo`, (err, row) => {
-    if (err) {
-      return res.status(500).json({message: err})
-    }
-    res.status(200).json({data: row})
-  })
-})
-
 function buildEventsQuery(type, search, table) {
   let sql = `SELECT * FROM ${table}`;
   let params = [];
@@ -221,7 +214,6 @@ function parseDateRange(dateStr, year = (new Date()).getFullYear()) {
   };
   dateStr = dateStr.trim();
 
-  // Диапазон в одном месяце: "1 – 12 июня"
   let match = dateStr.match(/^(\d+)\s*[–-]\s*(\d+)\s+([а-яё]+)$/i);
   if (match) {
     const startDay = parseInt(match[1], 10);
@@ -233,7 +225,6 @@ function parseDateRange(dateStr, year = (new Date()).getFullYear()) {
     };
   }
 
-  // Диапазон в двух месяцах: "16 апреля – 11 мая"
   match = dateStr.match(/^(\d+)\s+([а-яё]+)\s*[–-]\s*(\d+)\s+([а-яё]+)$/i);
   if (match) {
     const startDay = parseInt(match[1], 10);
@@ -246,7 +237,6 @@ function parseDateRange(dateStr, year = (new Date()).getFullYear()) {
     };
   }
 
-  // Обычная дата: "8 мая"
   match = dateStr.match(/^(\d+)\s+([а-яё]+)$/i);
   if (match) {
     const day = parseInt(match[1], 10);
@@ -255,7 +245,6 @@ function parseDateRange(dateStr, year = (new Date()).getFullYear()) {
     return { start: d, end: d };
   }
 
-  // Не распарсилось
   return { start: null, end: null };
 }
 
@@ -273,7 +262,6 @@ app.post('/events', async (req, res) => {
 
     const futureRows = rows.filter(event => {
       const { start, end } = parseDateRange(event.date);
-      // Событие показываем, если оно еще не закончилось (end >= today)
       return end && end >= today;
     });
 
@@ -301,7 +289,6 @@ app.post('/events-archive', async (req, res) => {
 
     const archiveRows = rows.filter(event => {
       const { end } = parseDateRange(event.date);
-      // В архиве только те, что закончились (end < today)
       return end && end < today;
     });
 
@@ -313,6 +300,45 @@ app.post('/events-archive', async (req, res) => {
 
     res.status(200).json({ data: archiveRows });
   });
+});
+
+app.get('/news', async (req, res) => {
+  db.all(`select * from news`, (err, rows) => {
+    if (err) {
+      return res.status(500).json({ message: err });
+    }
+    const data = rows.map(row => {
+      let imageBase64 = null;
+      if (row.image) {
+        imageBase64 = Buffer.from(row.image).toString('base64');
+      }
+      return {
+        ...row,
+        image: imageBase64
+      }
+    });
+    res.status(200).json({ data });
+  });
+});
+
+app.post('/add-news', upload.single('image'), async (req, res) => {
+  const { title, text, description } = req.body;
+  const image = req.file;
+
+  const id = checkToken(req.headers.authorization?.split(' ')[1], res);
+
+  if (!id) return res.status(500).json({ message: 'Неправильный токен' });
+
+  db.run(
+    'insert into news (title, text, description, image) values (?, ?, ?, ?)',
+    [title, text, description, image ? image.buffer : null],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ message: 'Не получилось создать новость' });
+      }
+      return res.status(200).json({ message: 'Получилось создать новость!' });
+    }
+  );
 });
 
 app.listen(port, () => console.log(`http://localhost:${port}`))
