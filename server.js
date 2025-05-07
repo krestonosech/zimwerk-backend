@@ -133,6 +133,45 @@ app.post('/add-publish', async (req, res) => {
   })
 })
 
+app.post('/change-publish', async (req, res) => {
+  const { id, date, type, name, description } = req.body;
+  const userId = checkToken(req.headers.authorization?.split(' ')[1], res);
+
+  if (!userId) return res.status(500).json({ message: 'Неправильный токен' });
+  if (!id) return res.status(400).json({ message: 'Не передан id события' });
+
+  db.run(
+    'UPDATE events SET date = ?, type = ?, name = ?, description = ? WHERE id = ?',
+    [date, type, name, description, id],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ message: 'Не удалось изменить событие' });
+      }
+      return res.status(200).json({ message: 'Событие изменено!' });
+    }
+  );
+});
+
+
+app.post('/delete-publish', async (req, res) => {
+  const { id } = req.body;
+  const userId = checkToken(req.headers.authorization?.split(' ')[1], res);
+
+  if (!userId) return res.status(500).json({ message: 'Неправильный токен' });
+  if (!id) return res.status(400).json({ message: 'Не передан id события' });
+
+  db.run(
+    'DELETE FROM events WHERE id = ?',
+    [id],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ message: 'Не удалось удалить событие' });
+      }
+      return res.status(200).json({ message: 'Событие удалено!' });
+    }
+  );
+});
+
 app.post('/requests', async (req, res) => {
   const id = checkToken(req.headers.authorization?.split(' ')[1], res)
   if (id === 1) {
@@ -339,6 +378,50 @@ app.post('/add-news', upload.single('image'), async (req, res) => {
       return res.status(200).json({ message: 'Получилось создать новость!' });
     }
   );
+});
+
+app.post('/change-news', upload.single('image'), async (req, res) => {
+  const { id, title, text, description } = req.body;
+  const image = req.file;
+
+  const userId = checkToken(req.headers.authorization?.split(' ')[1], res);
+  if (!userId) return res.status(401).json({ message: 'Неправильный токен' });
+
+  if (!id) return res.status(400).json({ message: 'Не передан id новости' });
+
+  let sql = '';
+  let params = [];
+
+  if (image) {
+    sql = 'UPDATE news SET title=?, text=?, description=?, image=? WHERE id=?';
+    params = [title, text, description, image.buffer, Number(id)];
+  } else {
+    sql = 'UPDATE news SET title=?, text=?, description=? WHERE id=?';
+    params = [title, text, description, Number(id)];
+  }
+
+  db.run(sql, params, function (err) {
+    if (err) {
+      return res.status(500).json({ message: 'Не удалось изменить новость' });
+    }
+    return res.status(200).json({ message: 'Новость изменена!' });
+  });
+});
+
+app.post('/delete-news', async (req, res) => {
+  const { id } = req.body;
+
+  const userId = checkToken(req.headers.authorization?.split(' ')[1], res);
+  if (!userId) return res.status(401).json({ message: 'Неправильный токен' });
+
+  if (!id) return res.status(400).json({ message: 'Не передан id новости' });
+
+  db.run('DELETE FROM news WHERE id=?', [Number(id)], function (err) {
+    if (err) {
+      return res.status(500).json({ message: 'Не удалось удалить новость' });
+    }
+    return res.status(200).json({ message: 'Новость удалена!' });
+  });
 });
 
 app.listen(port, () => console.log(`http://localhost:${port}`))
