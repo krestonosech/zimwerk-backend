@@ -20,27 +20,6 @@ const db = new sqlite3.Database("./db.db", (err) => {
   return console.log("бд подключена");
 });
 
-function formatTodayMonthWithDay() {
-  const months = [
-    "января",
-    "февраля",
-    "марта",
-    "апреля",
-    "мая",
-    "июня",
-    "июля",
-    "августа",
-    "сентября",
-    "октября",
-    "ноября",
-    "декабря",
-  ];
-  const today = new Date();
-  const monthName = months[today.getMonth()];
-  const day = today.getDate();
-  return `${day} ${monthName}`;
-}
-
 function checkToken(token, res) {
   let id = 0;
   if (!token) {
@@ -139,26 +118,6 @@ app.post("/auth", async (req, res) => {
       phone: row.phone,
     });
   });
-});
-
-app.post("/request", async (req, res) => {
-  const { username, eventsName, count, email, date } = req.body;
-  const id = checkToken(req.headers.authorization?.split(" ")[1], res);
-
-  if (!id) return res.status(500).json({ message: "Неправильный токен" });
-  const dateToInsert = date ?? formatTodayMonthWithDay();
-  db.run(
-    "insert into requests (username, eventsName, count, email, date) values (?, ?, ?, ?, ?)",
-    [username, eventsName, count, email, dateToInsert],
-    function (err) {
-      if (err) {
-        return res
-          .status(500)
-          .json({ message: "Не получилось создать заявку" });
-      }
-      return res.status(200).json({ message: "Получилось создать заявку!" });
-    }
-  );
 });
 
 app.post("/me", async (req, res) => {
