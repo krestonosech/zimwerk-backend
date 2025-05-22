@@ -75,8 +75,8 @@ app.post("/register", async (req, res) => {
     }
     const hash = bcrypt.hashSync(password, 10);
     db.run(
-      "insert into users (username, password, isAdmin, email, phone) values (?, ?, ?, ?, ?)",
-      [username, hash, 0, email, phone],
+      "insert into users (username, password, isAdmin, email, phone, isSendedReview) values (?, ?, ?, ?, ?, ?)",
+      [username, hash, 0, email, phone, 0],
       function (err) {
         if (err) {
           return res
@@ -306,14 +306,34 @@ app.post("/delete-good", async (req, res) => {
   const userId = checkToken(req.headers.authorization?.split(" ")[1], res);
   if (!userId) return res.status(401).json({ message: "Неправильный токен" });
 
-  if (!id) return res.status(400).json({ message: "Не передан id новости" });
+  if (!id) return res.status(400).json({ message: "Не передан id товара" });
 
-  db.run("DELETE FROM goods WHERE id=?", [Number(id)], function (err) {
+  db.run("DELETE FROM requests WHERE id=?", [Number(id)], function (err) {
     if (err) {
       return res.status(500).json({ message: "Не удалось удалить товар" });
     }
     return res.status(200).json({ message: "Товар удалена!" });
   });
+});
+
+app.post("/delete-request", async (req, res) => {
+  const { id } = req.body;
+
+  const userId = checkToken(req.headers.authorization?.split(" ")[1], res);
+  if (!userId) return res.status(401).json({ message: "Неправильный токен" });
+
+  if (!id) return res.status(400).json({ message: "Не передан id услуги" });
+
+  db.run(
+    "DELETE FROM another_requests WHERE id=?",
+    [Number(id)],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ message: "Не удалось удалить услугу" });
+      }
+      return res.status(200).json({ message: "Услуга удалена!" });
+    }
+  );
 });
 
 app.post("/send-review", async (req, res) => {
@@ -371,5 +391,32 @@ app.post("/reviews", async (req, res) => {
     }
     res.status(200).json(row);
   });
+});
+
+app.post("/delete-review", async (req, res) => {
+  const { id, username } = req.body;
+
+  const userId = checkToken(req.headers.authorization?.split(" ")[1], res);
+  if (!userId) return res.status(401).json({ message: "Неправильный токен" });
+
+  if (!id) return res.status(400).json({ message: "Не передан id отзыва" });
+
+  db.run(
+    `UPDATE users SET isSendedReview = 0 WHERE username = ?`,
+    [username],
+    (err) => {
+      if (err) {
+        return res
+          .status(500)
+          .json({ message: "Ошибка обновления пользователя" });
+      }
+      db.run("DELETE FROM review WHERE id=?", [Number(id)], function (err) {
+        if (err) {
+          return res.status(500).json({ message: "Не удалось удалить отзыв" });
+        }
+        return res.status(200).json({ message: "Отзыв удалена!" });
+      });
+    }
+  );
 });
 app.listen(port, () => console.log(`http://localhost:${port}`));
