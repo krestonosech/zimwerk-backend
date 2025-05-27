@@ -264,23 +264,77 @@ app.post("/add-requests", async (req, res) => {
   );
 });
 
-app.post("/add-another-requests", async (req, res) => {
-  const { username, service, phone } = req.body;
+app.post("/get-date", async (req, res) => {
+  const { date } = req.body;
+  let sql = "select * from another_requests where date = ?";
+  let params = [date];
 
-  db.run(
-    "insert into another_requests (username, service, phone) values (?, ?, ?)",
-    [username, service, phone],
-    function (err) {
-      if (err) {
-        return res.status(500).json({ message: "Не получилось записаться" });
-      }
+  db.all(sql, params, (err, row) => {
+    if (!row || err) {
       return res
-        .status(200)
-        .json({ message: "Получилось создать записаться!" });
+        .status(500)
+        .json({ message: "Не получилось запросить записи" });
+    }
+    res.status(200).json(row);
+  });
+});
+
+app.post("/add-another-requests", async (req, res) => {
+  const { username, service, phone, time, date } = req.body;
+
+  const durations = {
+    "Ремонт двигателя": 6,
+    "Ремонт подвески": 5,
+    Техобслуживание: 3,
+    Диагностика: 2,
+  };
+  const duration = durations[service] || 1;
+
+  function timeToMinutes(t) {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  const newStart = timeToMinutes(time);
+  const newEnd = newStart + duration * 60;
+
+  db.all(
+    "SELECT * FROM another_requests WHERE date = ?",
+    [date],
+    (err, rows) => {
+      if (err) {
+        return res
+          .status(500)
+          .json({ message: "Ошибка при проверке занятости" });
+      }
+
+      const conflict = rows.some((row) => {
+        const existingStart = timeToMinutes(row.time);
+        const existingDuration = durations[row.service] || 1;
+        const existingEnd = existingStart + existingDuration * 60;
+
+        return newStart < existingEnd && existingStart < newEnd;
+      });
+
+      if (conflict) {
+        return res.status(400).json({ message: "Выбранное время уже занято" });
+      }
+
+      db.run(
+        "INSERT INTO another_requests (username, service, phone, time, date) VALUES (?, ?, ?, ?, ?)",
+        [username, service, phone, time, date],
+        function (err) {
+          if (err) {
+            return res
+              .status(500)
+              .json({ message: "Не получилось записаться" });
+          }
+          return res.status(200).json({ message: "Запись успешно создана" });
+        }
+      );
     }
   );
 });
-
 app.post("/get-another-requests", async (req, res) => {
   const { username } = req.body;
   let sql = "select * from another_requests";
